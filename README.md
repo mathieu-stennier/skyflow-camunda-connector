@@ -1,195 +1,162 @@
-> A Connector template for new C8 outbound connector
->
-> To use this template update the following resources to match the name of your connector:
->
-> * [README](./README.md) (title, description)
-> * [Element Template](./element-templates/template-connector.json)
-> * [POM](./pom.xml) (artifact name, id, description)
-> * [Connector Function](src/main/java/io/camunda/example/classic/MyConnectorFunction.java) (rename, implement, update
-    `OutboundConnector` annotation)
-> * [Service Provider Interface (SPI)](./src/main/resources/META-INF/services/io.camunda.connector.api.outbound.OutboundConnectorFunction) (
-    rename)
->
->
-> about [creating Connectors](https://docs.camunda.io/docs/components/connectors/custom-built-connectors/connector-sdk/#creating-a-custom-connector)
->
-> Check out the [Connectors SDK](https://github.com/camunda/connectors)
+# Skyflow Detect Connector (Camunda 8)
 
-# Connector Template
+A **Camunda 8 outbound connector** that integrates with **Skyflow Detect** to:
 
-Camunda Outbound Connector Template
+- **De-identify** (tokenize) sensitive fields in structured JSON data.
+- **Re-identify** (reveal) previously tokenized values.
 
-This template project illustrates two different approaches to implement a Camunda Outbound Connector.
-Both implementations are supported by the Connector SDK and can be used as a foundation for building your own
-Connector. You can choose the approach that best fits your needs:
+This connector is implemented using the Camunda Connectors SDK (`OutboundConnectorFunction`) and ships with an element template for Camunda Modeler.
 
-## Classic API - `OutboundConnectorFunction`
+## What this connector does
 
-Example implementation: [`io.camunda.example.classic.MyConnectorFunction`](src/main/java/io/camunda/example/classic/MyConnectorFunction.java).
+The connector accepts a JSON object payload (typically built from process variables via FEEL), sends it to Skyflow Detect APIs, and returns the processed JSON back to the workflow.
 
-This approach utilizes the traditional `OutboundConnectorFunction` interface from the Connector SDK.
+### Supported operations
 
-## Operations API - `OutboundConnectorProvider`
+#### 1) De-identify (`DEIDENTIFY`)
 
-Example implementation: [`io.camunda.example.operations.MyConnectorProvider`](src/main/java/io/camunda/example/operations/MyConnectorProvider.java).
+1. Calls Skyflow Detect **de-identify structured text file** endpoint:
+   `POST /v1/detect/deidentify/file/structured_text`
+2. Reads `run_id` from the response.
+3. Polls Skyflow run status until completion:
+   `GET /v1/detect/runs/{runId}?vault_id={vaultId}`
+4. On `SUCCESS`, decodes the returned `processedFile` (base64 encoded JSON) and returns it as the connector result.
 
-Another example implementation from the main Connectors repository can be found [here](https://github.com/camunda/connectors/blob/23e577ead64c2a6b478b05d2ea3100ca6846e70a/connectors/csv/src/main/java/io/camunda/connector/csv/CsvConnector.java).
+#### 2) Re-identify (`REIDENTIFY`)
 
-This approach leverages the newer Operations API by implementing the `OutboundConnectorProvider` interface.
-The benefit of this approach is that it allows you to define multiple operations within a single Connector
-without the need to explicitly handle the routing of operations within a connector yourself.
+1. Calls Skyflow Detect **re-identify file** endpoint:
+   `POST /v1/detect/reidentify/file`
+2. Decodes the `output.processed_file` (base64 encoded JSON) and returns it as the connector result.
 
-The element template generator tool also supports both approaches and will generate the appropriate
-element templates based on the implementation you choose.
+## How it works (implementation notes)
+
+- The connector always wraps the payload as a Skyflow `file` object:
+  - `base64`: base64-encoded JSON
+  - `data_format`: `"json"`
+- Authentication is performed by sending `Authorization: Bearer <apiToken>`.
+- `vaultUri` can be either:
+  - a full URL (e.g. `https://...` or `http://...`), useful for testing, or
+  - a vault subdomain/identifier (e.g. `ebfc9bee4242`), which will be expanded to:
+    - production: `https://{vaultUri}.vault.skyflowapis.com`
+    - sandbox/preview: `https://{vaultUri}.vault.skyflowapis-preview.com`
+
+## Connector type
+
+`io.camunda:skyflow-detect:1`
+
+## Element template
+
+An element template is included in `element-templates/skyflow-detect-connector.json`.
+
+- Template id: `io.camunda.connectors.SkyflowDetect.v1`
+- Name: **Skyflow Detect Connector**
+
+To use templates in Desktop Modeler, place the JSON file in a directory configured as an element template folder (see Camunda docs).
+
+## Configuration (input)
+
+All fields below are available when applying the element template in Camunda Modeler.
+
+### Authentication
+
+| Field | Required | Description |
+|------|----------|-------------|
+| `authentication.vaultUri` | yes | Skyflow vault base identifier or full URL. If it does not start with `http`, the connector treats it as a vault subdomain. |
+| `authentication.vaultId` | yes | Skyflow vault ID. Used as `vault_id` query parameter when polling run status. |
+| `authentication.apiToken` | yes | Skyflow bearer token. Can be provided as a Camunda secret (recommended). |
+
+### Operation
+
+| Field | Required | Description |
+|------|----------|-------------|
+| `operation` | yes | `DEIDENTIFY` or `REIDENTIFY`. |
+| `payload` | yes | FEEL expression that evaluates to a JSON object. Example: `{ name: customer.name, ssn: customer.ssn }` |
+| `tokenType` | no | Only for `DEIDENTIFY`. Defaults to `vault_token`. Supported: `vault_token`, `static_token`. |
+| `entityTypes` | no | Only for `DEIDENTIFY`. Optional list of Skyflow entity type identifiers to de-identify (strings). If omitted/empty, Skyflow de-identifies all entities. |
+
+### Advanced
+
+| Field | Required | Default | Description |
+|------|----------|---------|-------------|
+| `sandbox` | no | `false` | If `true`, uses the Skyflow preview host (`skyflowapis-preview.com`) when `vaultUri` is not a full URL. |
+| `pollIntervalMs` | no | `1500` | Poll interval for `DEIDENTIFY` run status checks. |
+| `maxPollAttempts` | no | `40` | Maximum number of polling attempts before timing out. |
+
+## Output
+
+On success, the connector returns a JSON object (a `Map<String, Object>` in Java terms). In BPMN, map it into process variables using the standard connector output mapping.
+
+Typical patterns:
+
+- store entire response into a variable (e.g. `resultVariable = skyflowResult`)
+- or use a result expression to map parts of it
+
+## Error handling
+
+If Skyflow returns a non-2xx response, or if the run fails/times out, the connector throws a `ConnectorException`.
+
+Known error codes emitted by this implementation:
+
+- `SKYFLOW_EMPTY_PAYLOAD` – payload missing
+- `SKYFLOW_BAD_PAYLOAD` – payload isn’t a JSON object
+- `SKYFLOW_DEIDENTIFY_START_FAILED` – start request failed (HTTP error)
+- `SKYFLOW_POLL_FAILED` – polling request failed (HTTP error)
+- `SKYFLOW_POLL_TIMEOUT` – run didn’t finish in time
+- `SKYFLOW_RUN_FAILED` – run finished with FAILED/ERROR status
+- `SKYFLOW_REIDENTIFY_FAILED` – re-identify request failed (HTTP error)
+- `SKYFLOW_MISSING_RUN_ID` – start response didn’t include `run_id`
+- `SKYFLOW_MISSING_PROCESSED_FILE` – response didn’t include an expected processed file
+
+In Camunda, you can handle connector errors using incident handling, retries, and/or an Error Boundary Event with an error expression (see Camunda connector documentation for error handling patterns).
+
+## Secrets
+
+The connector supports Camunda secrets for the API token.
+
+Example: set `authentication.apiToken` to `secrets.SKYFLOW_API_TOKEN` and configure the secret in your runtime.
+
+> Note: In the unit tests, secret replacement is validated by providing `apiToken = "secrets.API_TOKEN"`.
 
 ## Build
-
-You can package the Connector by running the following command:
 
 ```bash
 mvn clean package
 ```
 
-This will create the following artifacts:
+This produces:
 
-- A thin JAR without dependencies.
-- A fat JAR containing all dependencies, potentially shaded to avoid classpath conflicts. This will not include the SDK
-  artifacts since those are in scope `provided` and will be brought along by the respective Connector Runtime executing
-  the Connector.
+- a thin JAR
+- a shaded (fat) JAR in `target/` suitable for running with a connector runtime
 
-### Shading dependencies
-
-You can use the `maven-shade-plugin` defined in the [Maven configuration](./pom.xml) to relocate common dependencies
-that are used in other Connectors and
-the [Connector Runtime](https://github.com/camunda/connectors).
-This helps to avoid classpath conflicts when the Connector is executed.
-
-
-For example, without shading, you might encounter errors like:
-```
-java.lang.NoSuchMethodError: com.fasterxml.jackson.databind.ObjectMapper.setserializationInclusion(Lcom/fasterxml/jackson/annotation/JsonInclude$Include;)Lcom/fasterxml/jackson/databind/ObjectMapper;
-```
-This occurs when your connector and the runtime use different versions of the same library (e.g., Jackson).
-
-Use the `relocations` configuration in the Maven Shade plugin to define the dependencies that should be shaded.
-The [Maven Shade documentation](https://maven.apache.org/plugins/maven-shade-plugin/examples/class-relocation.html)
-provides more details on relocations.
-
-## API
-
-### Input
-
-| Name     | Description      | Example           | Notes                                                                      |
-|----------|------------------|-------------------|----------------------------------------------------------------------------|
-| username | Mock username    | `alice`           | Has no effect on the function call outcome.                                |
-| token    | Mock token value | `my-secret-token` | Has no effect on the function call outcome.                                |
-| message  | Mock message     | `Hello World`     | Echoed back in the output. If starts with 'fail', an error will be thrown. |
-
-### Output
-
-```json
-{
-  "result":{
-    "myProperty":"Message received: ..."
-  }
-}
-```
-
-### Error codes
-
-| Code | Description                                |
-|------|--------------------------------------------|
-| FAIL | Message starts with 'fail' (ignoring case) |
-
-## Test locally
-
-Run unit tests
+## Run tests
 
 ```bash
 mvn clean verify
 ```
 
-## Testing
-### Unit and Integration Tests
+## Run locally (connector runtime)
 
-You can run the unit and integration tests by executing the following Maven command:
-```bash
-mvn clean verify
-```
+This repository includes a small launcher that boots the Camunda connector runtime in-process:
 
-### Local environment
+- Main class: `io.camunda.connector.LocalConnectorRuntime`
 
-#### Prerequisites
-You will need the following tools installed on your machine:
-1. Camunda Modeler, which is available in two variants:
-    - [Desktop Modeler](https://camunda.com/download/modeler/) for a local installation.
-    - [Web Modeler](https://modeler.camunda.io/) for an online experience.
+It uses the Camunda connectors Spring Boot runtime (test-scoped dependency) and activates the `local` Spring profile.
 
-2. [Docker](https://www.docker.com/products/docker-desktop), which is required to run the Camunda platform.
+### Configuration
 
-#### Setting Up the Camunda platform
+Check `src/test/resources/application.properties` and update it with either:
 
-The Connectors Runtime requires a running Camunda platform to interact with. To set up a local Camunda environment, follow these steps:
+- your **Camunda SaaS** cluster connection details (Zeebe + OAuth), or
+- your **local** Camunda distribution connection details.
 
-1. Clone the [Camunda distributions repository](https://github.com/camunda/camunda-distributions) from GitHub and navigate to the Camunda 8.8 docker-compose directory:
+## References
 
-```shell
-git clone git@github.com:camunda/camunda-distributions.git
-cd cd docker-compose/versions/camunda-8.8
-```
+### Camunda
 
-**Note:** This template is compatible with Camunda 8.8. Using other versions may lead to compatibility issues.
+- Camunda 8 Connectors documentation: https://docs.camunda.io/docs/components/connectors/
+- Using outbound connectors (retries, etc.): https://docs.camunda.io/docs/next/components/connectors/use-connectors/outbound
 
-Either comment out the connectors service, or use the `--scale` flag to exclude it:
+### Skyflow
 
-```shell
-docker compose -f docker-compose-core.yaml up --scale connectors=0
-```
-
-#### Configure the Desktop Modeler and Use Your Connector
-
-Add the `element-templates/template-connector-message-start-event.json` to your Modeler configuration as per
-the [Element Templates documentation](https://docs.camunda.io/docs/components/modeler/desktop-modeler/element-templates/configuring-templates/).
-
-#### Using Your Connector
-Then, to use your connector in a local Camunda environment, follow these steps:
-
-1. Run `io.camunda.connector.inbound.LocalConnectorRuntime` to start your connector.
-2. Open the Camunda Desktop Modeler and create a new BPMN diagram.
-3. Design a process that incorporates your newly created connector.
-4. Deploy the process to your local Camunda platform.
-5. Verify that the process is running smoothly by accessing Camunda Operate at [localhost:8088/operate](http://localhost:8088/operate). Username and password are both `demo`.
-
-### SaaS environment
-
-#### Creating an API Client
-
-The Connectors Runtime (LocalConnectorRuntime) requires connection details to interact with your Camunda SaaS cluster. To set this up, follow these steps:
-
-1. Navigate to Camunda [SaaS](https://console.camunda.io).
-2. Create a cluster using the latest version available.
-3. Select your cluster, then go to the `API` section and click `Create new Client`.
-4. Ensure the `zeebe` checkbox is selected, then click `Create`.
-5. Copy the configuration details displayed under the `Spring Boot` tab.
-6. Paste the copied configuration into your `application.properties` file within your project.
-
-#### Using Your Connector
-
-1. Start your connector by executing `io.camunda.connector.inbound.LocalConnectorRuntime` in your development
-   environment.
-2. Access the Web Modeler and create a new project.
-3. Click on `Create new`, then select `Upload files`. Upload the connector template from the repository you have.
-4. After uploading, **publish the connector template** by clicking the Publish button.
-5. In the same folder, create a new BPMN diagram.
-6. Design and start a process that incorporates your new connector.
-
-## Element Template
-
-The element template for this sample connector is generated automatically based on the connector
-input class using
-the [Element Template Generator](https://github.com/camunda/connectors/tree/main/element-template-generator/core).
-
-The generation is embedded in the Maven build and can be triggered by running `mvn clean package`.
-
-The generated element template can be found
-in [element-templates/template-connector.json](./element-templates/template-connector.json).
+- Skyflow documentation home: https://docs.skyflow.com
+- Skyflow authentication overview: https://docs.skyflow.com/docs/fundamentals/api-authentication
