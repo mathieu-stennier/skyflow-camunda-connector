@@ -20,6 +20,7 @@
     <version.junit-jupiter>6.0.0</version.junit-jupiter>
     <version.awaitility>4.2.0</version.awaitility>
     <version.mockito>5.19.0</version.mockito>
+    <version.wiremock>3.13.2</version.wiremock>
     <java.version>21</java.version>
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
@@ -105,6 +106,26 @@
       <scope>test</scope>
     </dependency>
 
+    <dependency>
+      <groupId>org.wiremock</groupId>
+      <artifactId>wiremock-standalone</artifactId>
+      <version>${version.wiremock}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>io.camunda.connector</groupId>
+      <artifactId>connector-runtime-application</artifactId>
+      <version>${version.connectors}</version>
+      <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>com.google.cloud</groupId>
+          <artifactId>spring-cloud-gcp-logging</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
   </dependencies>
 
   <build>
@@ -141,20 +162,11 @@
         <configuration>
           <connectors>
             <connector>
-              <connectorClass>io.camunda.example.classic.MyConnectorFunction</connectorClass>
+              <connectorClass>io.camunda.connector.skyflow.SkyflowDetectConnector</connectorClass>
               <files>
                 <file>
                   <templateId>io.camunda.connector.Template.v1</templateId>
                   <templateFileName>template-connector.json</templateFileName>
-                </file>
-              </files>
-            </connector>
-            <connector>
-              <connectorClass>io.camunda.example.operations.MyConnectorProvider</connectorClass>
-              <files>
-                <file>
-                  <templateId>io.camunda.connector.Template.v2</templateId>
-                  <templateFileName>template-connector-v2.json</templateFileName>
                 </file>
               </files>
             </connector>

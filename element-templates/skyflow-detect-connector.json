@@ -1,0 +1,276 @@
+{
+  "$schema" : "https://unpkg.com/@camunda/zeebe-element-templates-json-schema/resources/schema.json",
+  "name" : "Skyflow Detect Connector",
+  "id" : "io.camunda.connectors.SkyflowDetect.v1",
+  "description" : "De-identify and re-identify sensitive data via Skyflow Detect APIs",
+  "metadata" : {
+    "keywords" : [ ]
+  },
+  "documentationRef" : "https://docs.skyflow.com",
+  "version" : 1,
+  "category" : {
+    "id" : "connectors",
+    "name" : "Connectors"
+  },
+  "appliesTo" : [ "bpmn:Task" ],
+  "elementType" : {
+    "value" : "bpmn:ServiceTask"
+  },
+  "groups" : [ {
+    "id" : "authentication",
+    "label" : "Authentication"
+  }, {
+    "id" : "operation",
+    "label" : "Operation"
+  }, {
+    "id" : "advanced",
+    "label" : "Advanced"
+  }, {
+    "id" : "connector",
+    "label" : "Connector"
+  }, {
+    "id" : "output",
+    "label" : "Output mapping"
+  }, {
+    "id" : "error",
+    "label" : "Error handling"
+  }, {
+    "id" : "retries",
+    "label" : "Retries"
+  } ],
+  "properties" : [ {
+    "value" : "io.camunda:skyflow-detect:1",
+    "binding" : {
+      "property" : "type",
+      "type" : "zeebe:taskDefinition"
+    },
+    "type" : "Hidden"
+  }, {
+    "id" : "authentication.vaultUri",
+    "label" : "Vault URI",
+    "description" : "The subdomain/identifier of your vault (e.g. ebfc9bee4242)",
+    "optional" : false,
+    "constraints" : {
+      "notEmpty" : true
+    },
+    "group" : "authentication",
+    "binding" : {
+      "name" : "authentication.vaultUri",
+      "type" : "zeebe:input"
+    },
+    "type" : "String"
+  }, {
+    "id" : "authentication.vaultId",
+    "label" : "Vault ID",
+    "optional" : false,
+    "constraints" : {
+      "notEmpty" : true
+    },
+    "group" : "authentication",
+    "binding" : {
+      "name" : "authentication.vaultId",
+      "type" : "zeebe:input"
+    },
+    "type" : "String"
+  }, {
+    "id" : "authentication.apiToken",
+    "label" : "API Token",
+    "description" : "Bearer token for authentication",
+    "optional" : false,
+    "constraints" : {
+      "notEmpty" : true
+    },
+    "feel" : "optional",
+    "group" : "authentication",
+    "binding" : {
+      "name" : "authentication.apiToken",
+      "type" : "zeebe:input"
+    },
+    "type" : "String"
+  }, {
+    "id" : "operation",
+    "label" : "Operation",
+    "optional" : false,
+    "value" : "DEIDENTIFY",
+    "constraints" : {
+      "notEmpty" : true
+    },
+    "group" : "operation",
+    "binding" : {
+      "name" : "operation",
+      "type" : "zeebe:input"
+    },
+    "type" : "Dropdown",
+    "choices" : [ {
+      "name" : "De-identify",
+      "value" : "DEIDENTIFY"
+    }, {
+      "name" : "Re-identify",
+      "value" : "REIDENTIFY"
+    } ]
+  }, {
+    "id" : "payload",
+    "label" : "Payload",
+    "description" : "FEEL expression evaluating to a JSON object with data to process. Example: { name: name, age: age }",
+    "optional" : false,
+    "constraints" : {
+      "notEmpty" : true
+    },
+    "feel" : "required",
+    "group" : "operation",
+    "binding" : {
+      "name" : "payload",
+      "type" : "zeebe:input"
+    },
+    "type" : "Text"
+  }, {
+    "id" : "tokenType",
+    "label" : "Token type",
+    "description" : "Type of tokens to generate during de-identification (only applies to DEIDENTIFY operation)",
+    "optional" : true,
+    "value" : "vault_token",
+    "group" : "operation",
+    "binding" : {
+      "name" : "tokenType",
+      "type" : "zeebe:input"
+    },
+    "type" : "Dropdown",
+    "choices" : [ {
+      "name" : "Vault Token (stores tokens in vault)",
+      "value" : "vault_token"
+    }, {
+      "name" : "Static Token (hides data without vaulting)",
+      "value" : "static_token"
+    } ]
+  }, {
+    "id" : "entityTypes",
+    "label" : "Entity types",
+    "description" : "Optional FEEL expression resolving to a list of entity types to de-identify (strings). Example: [\"EMAIL\", \"PHONE_NUMBER\"]. If omitted/empty, Skyflow will de-identify all supported entities.",
+    "optional" : true,
+    "feel" : "required",
+    "group" : "operation",
+    "binding" : {
+      "name" : "entityTypes",
+      "type" : "zeebe:input"
+    },
+    "condition" : {
+      "property" : "operation",
+      "equals" : "DEIDENTIFY",
+      "type" : "simple"
+    },
+    "type" : "String"
+  }, {
+    "id" : "sandbox",
+    "label" : "Use Sandbox (preview) API",
+    "optional" : true,
+    "feel" : "static",
+    "group" : "advanced",
+    "binding" : {
+      "name" : "sandbox",
+      "type" : "zeebe:input"
+    },
+    "type" : "Boolean"
+  }, {
+    "id" : "pollIntervalMs",
+    "label" : "Poll interval (ms)",
+    "optional" : true,
+    "feel" : "static",
+    "group" : "advanced",
+    "binding" : {
+      "name" : "pollIntervalMs",
+      "type" : "zeebe:input"
+    },
+    "type" : "Number"
+  }, {
+    "id" : "maxPollAttempts",
+    "label" : "Max poll attempts",
+    "optional" : true,
+    "feel" : "static",
+    "group" : "advanced",
+    "binding" : {
+      "name" : "maxPollAttempts",
+      "type" : "zeebe:input"
+    },
+    "type" : "Number"
+  }, {
+    "id" : "version",
+    "label" : "Version",
+    "description" : "Version of the element template",
+    "value" : "1",
+    "group" : "connector",
+    "binding" : {
+      "key" : "elementTemplateVersion",
+      "type" : "zeebe:taskHeader"
+    },
+    "type" : "Hidden"
+  }, {
+    "id" : "id",
+    "label" : "ID",
+    "description" : "ID of the element template",
+    "value" : "io.camunda.connectors.SkyflowDetect.v1",
+    "group" : "connector",
+    "binding" : {
+      "key" : "elementTemplateId",
+      "type" : "zeebe:taskHeader"
+    },
+    "type" : "Hidden"
+  }, {
+    "id" : "resultVariable",
+    "label" : "Result variable",
+    "description" : "Name of variable to store the response in",
+    "group" : "output",
+    "binding" : {
+      "key" : "resultVariable",
+      "type" : "zeebe:taskHeader"
+    },
+    "type" : "String"
+  }, {
+    "id" : "resultExpression",
+    "label" : "Result expression",
+    "description" : "Expression to map the response into process variables",
+    "feel" : "required",
+    "group" : "output",
+    "binding" : {
+      "key" : "resultExpression",
+      "type" : "zeebe:taskHeader"
+    },
+    "type" : "Text"
+  }, {
+    "id" : "errorExpression",
+    "label" : "Error expression",
+    "description" : "Expression to handle errors. Details in the <a href=\"https://docs.camunda.io/docs/components/connectors/use-connectors/\" target=\"_blank\">documentation</a>.",
+    "feel" : "required",
+    "group" : "error",
+    "binding" : {
+      "key" : "errorExpression",
+      "type" : "zeebe:taskHeader"
+    },
+    "type" : "Text"
+  }, {
+    "id" : "retryCount",
+    "label" : "Retries",
+    "description" : "Number of retries",
+    "value" : "3",
+    "feel" : "optional",
+    "group" : "retries",
+    "binding" : {
+      "property" : "retries",
+      "type" : "zeebe:taskDefinition"
+    },
+    "type" : "String"
+  }, {
+    "id" : "retryBackoff",
+    "label" : "Retry backoff",
+    "description" : "ISO-8601 duration to wait between retries",
+    "value" : "PT0S",
+    "group" : "retries",
+    "binding" : {
+      "key" : "retryBackoff",
+      "type" : "zeebe:taskHeader"
+    },
+    "type" : "String"
+  } ],
+  "icon" : {
+    "contents" : "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAACtUlEQVRYhcWXP0wTURzHP68VtHoDKcslNrTD1cEBjxj+JAJpdbDUxQTYNG1jTAwOhIkQY5DNTYh0cLLM4mphokKJgAMHgya0icWEeA40DGeZ9BzEpuVfXwXsd3qX+937ft7vvd979wR7CgQeBfjpHEWgAw2clWxSCBKp+fgUgBMg0D0wiu1IIPABF87MHNjzuOvztpLb/PheBLoGogjx+kxNj9IvEXSAiNTEHEDYow4EgdoBoDtqZv5HDeeq/ULX/fT2B9G0y6hqIwCWVSCb3SK9sMZieh3TzEv3JwLdj22ZQFV1MzxyH133V4ydnp4j/vKtFIB0Bl5MDBZHXEnKJZdst3IAt0PtZebZ7BazyQ9ks1tlMXrLFVTVzVTi3ekCdHY1F9uWtcvTJ68OzLNhZFAUF5rmqWoNSFWBolwsASgcaWBZuxhGRtpcGsD8tl1sq2ojvX3BqkyOk9PnbXtWKUgAN29dLz63tV9Fb/GjKC7O19dVlfIDfcuW4fDIPUKhjkPfWVaBdHqd2eRy1VMglQGAxfQ6P6wCTV4VRSkvs/r6OjTNQ6inA83v4fOnL1jWrhSAdAZK1dnZzI3O5mLZ7ZdpbvPwwXMpiH8CKJWqutF1P5HYnTKY6TdzxCcr74YnPoxMM8/MzDJDg+NlIw71HL5eTh2gFMQwNorP+9fJiQEisfCh811qqGmeMiAZSW3FquomGg0TjYYxjAwzySW+m3lMM4+iuLima/T1B8vOC2N145geqwSIxMLFtq77Kx7JppmXPpCkpmBtNSOdUsPIMDQ4Lh1fVRn+rX/N70FVG4sLzTS3MYwss8mlqnfCE+8DJ1Wtf0pxADu1BbAxauZuk3Jgi7GaAQgSztzXlZzP2y7gf9+QxFhqPj7hBMhtrqR8Ta2bIBr2bq9npR1slrBFLLUwmQD4DT+I65fbox/EAAAAAElFTkSuQmCC"
+  }
+}
